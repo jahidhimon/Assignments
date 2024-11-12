@@ -3,8 +3,7 @@
 abstract class Book
 {
     public const PERDAYFINE = self::PERDAYFINE;
-
-    public bool $occupied;
+    public const BORROWDAYSPAN = self::BORROWDAYSPAN;
 
     protected string $title;
     protected string $author;
@@ -15,29 +14,78 @@ abstract class Book
         $this->author = $author;
     }
 
-    public function getTitle()
+    public function getTitle(): string
     {
         return $this->title;
     }
+
+    public function getAuthor(): string
+    {
+        return $this->author;
+    }
+
+    abstract public function borrow(): void;
+    abstract public function return(): int;
 }
 
 class PrintedBook extends Book
 {
     public const PERDAYFINE = 20;
+    public const BORROWDAYSPAN = 14;
+
+    private DateTime $returnDate;
+    private bool $occupied;
 
     public function __construct(string $title, string $author)
     {
         parent::__construct($title, $author);
         $this->occupied = false;
     }
+
+    public function isOccupied(): bool
+    {
+        return $this->occupied;
+    }
+
+    public function borrow(): void
+    {
+        $this->returnDate = date_add(new DateTime(), date_interval_create_from_date_string($this::BORROWDAYSPAN . ' days'));
+        $this->occupied = true;
+    }
+
+    public function return(): int
+    {
+        $diff_date = (new DateTime())->diff($this->returnDate)->format("%r%a");
+        $this->occupied = false;
+
+        if ($diff_date < 0) {
+            return $this::PERDAYFINE * $diff_date * -1;
+        }
+
+        return 0;
+    }
 }
 
 class EBook extends Book
 {
     public const PERDAYFINE = 10;
+    public const BORROWDAYSPAN = 7;
+
     public function __construct(string $title, string $author)
     {
         parent::__construct($title, $author);
+    }
+
+    public function borrow(): void
+    {
+        print("Generating a random link for accessing {$this->getTitle()}. Which expires in 7 days.\n");
+        $link = str_shuffle("abcd%e2103f%ghi_j");
+        print("https://bookpedia.com/{$link}\n");
+    }
+
+    public function return(): int
+    {
+        return 0;
     }
 }
 
@@ -52,7 +100,7 @@ class Member
         $this->email = $email;
     }
 
-    public function getName()
+    public function getName(): string
     {
         return $this->name;
     }
@@ -71,12 +119,12 @@ class Library
         $this->loans = [];
     }
 
-    public function addBook(Book $book)
+    public function addBook(Book $book): void
     {
         array_push($this->books, $book);
     }
 
-    public function borrowBook(Member $member, string $bookTitle)
+    public function borrowBook(Member $member, string $bookTitle): void
     {
         $book = $this->findBook($bookTitle);
         if ($book == null) {
@@ -84,13 +132,14 @@ class Library
             return;
         }
 
-
         array_push($this->borrowers, $member);
-        $book->occupied = true;
-        print("{$member->getName()} has borrowed {$book->getTitle()}. Due in 14 days\n");
+        $book->borrow();
+
+        $borrowDaySpan = $book::BORROWDAYSPAN;
+        print("{$member->getName()} has borrowed {$book->getTitle()}. Due in {$borrowDaySpan} days\n");
     }
 
-    public function returnBook(Member $member, string $bookTitle)
+    public function returnBook(Member $member, string $bookTitle): void
     {
         $book = $this->findBook($bookTitle);
 
@@ -107,9 +156,15 @@ class Library
         }
 
         array_splice($this->borrowers, $borrowerIndex, 1);
-        print("{$member->getName()} has returned {$book->getTitle()}.\n");
+        print("{$member->getName()} has returned {$book->getTitle()}");
 
-        $book->occupied = false;
+        $fine = $book->return();
+        if ($fine === 0) {
+            print(" with no fine.\n");
+        } else {
+            array_push($this->loans, [$member, $fine]);
+            print(" with {$fine} TAKA FINE\n");
+        }
     }
 
     private function findBorrower(Member $member): int
@@ -140,5 +195,7 @@ $library->addBook($book);
 $member = new Member("Alice", "alice@example.com");
 
 $library->borrowBook($member, "1984");
+
+sleep(2);
 
 $library->returnBook($member, "1984");
